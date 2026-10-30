@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tire la Corde !</title>
+<meta name="description" content="Jeu de calcul mental en tir à la corde pour les enfants : la télé affiche la corde, chacun répond sur son téléphone.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🪢%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Mise en page : une arène de lagon (corde, équipes) + grands pavés numériques tactiles. Look unique, clair, pensé pour la TV et les petites mains. */
+:root{
+  --lagon:#dff3f1; --lagon-2:#bfe6e2; --ink:#12343a; --ink-soft:#4b6a6f;
+  --rouge:#e2483b; --rouge-pale:#fbd9d4; --bleu:#1e66c9; --bleu-pale:#d4e3f8;
+  --corde:#b07a36; --or:#ffc63a; --carte:#ffffff; --sol:#9fd3a6;
+  --display:"Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --body:"Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme:light;
+}
+html,body{height:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{background:var(--lagon);color:var(--ink);font-family:var(--body);font-size:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+*{box-sizing:border-box}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.05;text-wrap:balance}
+button{font-family:var(--display);cursor:pointer;border:0;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:4px solid var(--or);outline-offset:2px}
+input,select{font-family:var(--body);font-size:1.1rem;font-weight:700;padding:.7em .8em;border-radius:12px;border:2px solid var(--lagon-2);background:var(--carte);color:var(--ink);width:100%}
+label{font-weight:800;font-size:.9rem;display:grid;gap:6px}
+.view{max-width:1100px;margin:0 auto;padding-block:20px 32px}
+.btn{background:var(--ink);color:#fff;font-size:1.25rem;font-weight:800;padding:.6em 1.2em;border-radius:14px;box-shadow:0 4px 0 #071d21}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #071d21}
+.btn.or{background:var(--or);color:var(--ink);box-shadow:0 4px 0 #b58712}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:none;border:2px solid var(--ink);font-size:1rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.back{font-size:.95rem;padding:.4em .8em}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--ink-soft)}
+
+/* Accueil */
+.hero{display:grid;gap:10px;padding-block:12px 20px}
+.hero h1{font-size:clamp(2.6rem,8vw,5rem);font-weight:800;letter-spacing:-.01em}
+.hero h1 span{color:var(--rouge)} .hero h1 em{font-style:normal;color:var(--bleu)}
+.hero p{max-width:60ch;font-size:1.1rem;margin:0}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.mode{background:var(--carte);border-radius:20px;padding:20px;text-align:left;display:grid;gap:8px;border:3px solid transparent;box-shadow:0 6px 0 var(--lagon-2)}
+.mode:hover{border-color:var(--ink)}
+.mode h2{font-size:1.6rem}
+.mode p{font-family:var(--body);font-weight:600;margin:0;color:var(--ink-soft);font-size:1rem}
+.mode .tag{font-family:var(--body);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;font-weight:800;color:var(--bleu)}
+.niveaux{margin-top:22px;background:var(--carte);border-radius:20px;padding:18px 20px;display:grid;gap:10px}
+.niveaux h3{font-size:1.3rem}
+.niv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.niv div{background:var(--lagon);border-radius:14px;padding:12px 14px}
+.niv b{font-family:var(--display);font-size:1.1rem;display:block}
+.niv code{font-family:var(--body);font-weight:700;color:var(--ink-soft)}
+
+/* Arène */
+.arena{background:linear-gradient(var(--lagon-2) 0 62%,var(--sol) 62% 100%);border-radius:22px;overflow:hidden;position:relative}
+.arena svg{display:block;width:100%;height:auto}
+.scorebar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin-block:12px}
+.team-name{font-family:var(--display);font-weight:800;font-size:clamp(1.3rem,3vw,2.2rem)}
+.team-name.r{color:var(--rouge)} .team-name.b{color:var(--bleu);text-align:right}
+.code-box{background:var(--carte);border-radius:16px;padding:8px 16px;text-align:center}
+.code-box small{display:block;font-weight:800;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.code-box strong{font-family:var(--display);font-size:clamp(2rem,5vw,3.4rem);letter-spacing:.12em;line-height:1}
+.lobby{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.roster{border-radius:16px;padding:14px;min-height:90px}
+.roster.r{background:var(--rouge-pale)} .roster.b{background:var(--bleu-pale)}
+.roster h3{font-size:1.1rem;margin-bottom:6px}
+.roster ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.roster li{background:var(--carte);border-radius:999px;padding:4px 12px;font-weight:800}
+.roster li small{font-weight:700;color:var(--ink-soft)}
+.tv-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:14px}
+.tv-controls label{min-width:160px;flex:1}
+.banner{position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:rgb(18 52 58 / .55);color:#fff;padding:20px}
+.banner h2{font-size:clamp(2.4rem,9vw,6rem);font-weight:800;text-shadow:0 4px 0 rgb(0 0 0 / .25)}
+.banner p{font-size:1.3rem;font-weight:800;margin:.3em 0 0}
+.joinbox{display:flex;gap:16px;align-items:center;background:var(--carte);border-radius:16px;padding:14px;margin-top:14px;font-weight:700;flex-wrap:wrap}
+.joinbox>div:last-child{flex:1;min-width:220px}
+.qr{background:#fff;padding:6px;border-radius:10px;line-height:0}
+#tv-url{word-break:break-all}
+.notice{background:var(--carte);border-left:6px solid var(--or);border-radius:12px;padding:12px 14px;font-weight:700;margin-top:12px}
+
+/* Joueur */
+.player{display:grid;gap:12px;max-width:460px;margin:0 auto}
+.player.rouge{--team:var(--rouge);--team-pale:var(--rouge-pale)}
+.player.bleu{--team:var(--bleu);--team-pale:var(--bleu-pale)}
+.p-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.p-head .who{font-family:var(--display);font-weight:800;font-size:1.3rem;color:var(--team)}
+.pulls{background:var(--team);color:#fff;border-radius:999px;padding:4px 14px;font-family:var(--display);font-weight:800;font-variant-numeric:tabular-nums}
+.minirope{height:16px;border-radius:999px;background:linear-gradient(90deg,var(--rouge-pale) 0 50%,var(--bleu-pale) 50% 100%);position:relative}
+.minirope i{position:absolute;top:-5px;width:26px;height:26px;border-radius:50%;background:var(--or);border:3px solid var(--ink);left:50%;transform:translateX(-50%);transition:left .4s}
+.qcard{background:var(--carte);border-radius:22px;padding:18px;text-align:center;border:4px solid var(--team);min-height:150px;display:grid;align-content:center;gap:6px}
+.qcard .q{font-family:var(--display);font-weight:800;font-size:clamp(2.2rem,11vw,3.4rem);font-variant-numeric:tabular-nums;line-height:1.1}
+.qcard .a{font-family:var(--display);font-weight:800;font-size:2.2rem;min-height:1.3em;color:var(--team);font-variant-numeric:tabular-nums;border-bottom:3px dashed var(--lagon-2);width:5ch;margin:0 auto}
+.qcard.ok{background:#e5f7e7} .qcard.ko{animation:shake .35s}
+.fb{min-height:1.4em;font-weight:800;text-align:center;font-size:1.05rem}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@media (prefers-reduced-motion:reduce){.qcard.ko{animation:none}.minirope i{transition:none}}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pad button{background:var(--carte);font-size:2rem;font-weight:800;border-radius:16px;padding:.35em 0;box-shadow:0 4px 0 var(--lagon-2);touch-action:manipulation}
+.pad button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--lagon-2)}
+.pad .go{background:var(--team);color:#fff;box-shadow:0 4px 0 rgb(0 0 0 / .25)}
+.pad .del{font-size:1.3rem}
+.pad:has(button:disabled) button{opacity:.5}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choice button{padding:14px;border-radius:16px;font-size:1.3rem;font-weight:800;background:var(--carte);border:3px solid transparent}
+.choice button.sel{border-color:var(--ink)}
+.choice .cr{color:var(--rouge)} .choice .cb{color:var(--bleu)}
+.lvl{display:grid;gap:8px}
+.lvl button{text-align:left;padding:12px 14px;border-radius:14px;background:var(--carte);border:3px solid transparent;font-size:1.1rem;font-weight:800}
+.lvl button small{display:block;font-family:var(--body);font-weight:600;font-size:.85rem;color:var(--ink-soft)}
+.lvl button.sel{border-color:var(--ink)}
+.form{display:grid;gap:14px;max-width:460px;margin:0 auto}
+.wait{background:var(--carte);border-radius:20px;padding:24px;text-align:center;font-weight:800;font-size:1.2rem}
+
+/* Tablette à deux */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.duo .player{max-width:none;width:100%}
+.duo .qcard{min-height:120px}
+.duo .pad button{font-size:1.6rem}
+@media (max-width:640px){.duo{gap:8px}.duo .qcard .q{font-size:1.7rem}.duo .pad{gap:6px}.duo .pad button{font-size:1.3rem}.lobby{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="home" class="view">
+  <header class="hero">
+    <h1>Tire la <span>Cor</span><em>de</em> !</h1>
+    <p>Chaque bonne réponse tire la corde vers ton équipe. La télé montre la corde, chaque enfant répond aux calculs sur son téléphone. Le premier ruban qui passe la ligne gagne.</p>
+  </header>
+  <div class="modes">
+    <button class="mode" data-go="tvsetup"><span class="tag">Sur la télé</span><h2>Écran de la corde</h2><p>Affiche le code de la partie et la corde. À ouvrir sur l'ordinateur branché à la télé.</p></button>
+    <button class="mode" data-go="join"><span class="tag">Sur chaque téléphone</span><h2>Je suis un joueur</h2><p>Entre le code de la télé, ton prénom, ton équipe et ton niveau.</p></button>
+    <button class="mode" data-go="duosetup"><span class="tag">Un seul écran</span><h2>Tablette à deux</h2><p>Deux enfants côte à côte sur la même tablette. Pratique quand on n'a qu'un écran.</p></button>
+  </div>
+  <section class="niveaux">
+    <h3>Trois niveaux, pour que petits et grands tirent à égalité</h3>
+    <div class="niv">
+      <div><b>Niveau 1 · 6–7 ans</b><code>7 + 5 · 14 − 6 · 3 + ? = 10 · double de 8</code></div>
+      <div><b>Niveau 2 · 8–9 ans</b><code>47 + 8 · 63 − 7 · tables de 2, 3, 4, 5, 10 · moitié de 36</code></div>
+      <div><b>Niveau 3 · 10–11 ans</b><code>7 × 8 · 56 ÷ 7 · 38 + 45 · 24 × 100 · 6 × ? = 42</code></div>
+    </div>
+    <p class="muted" style="margin:0">Une erreur ne fait pas reculer : l'enfant voit la bonne réponse et attend une seconde avant le calcul suivant.</p>
+  </section>
+</div>
+
+<!-- TV -->
+<div id="tvsetup" class="view" hidden>
+  <div class="row" style="justify-content:space-between"><button class="btn ghost back" data-go="home">← Accueil</button><span class="muted" id="tv-conn"></span></div>
+  <div class="scorebar">
+    <div class="team-name r" id="tv-name-r">Les Piments</div>
+    <div class="code-box"><small>Code de la partie</small><strong id="tv-code">····</strong></div>
+    <div class="team-name b" id="tv-name-b">Les Requins</div>
+  </div>
+  <div class="arena" id="tv-arena"><div class="banner" id="tv-banner" hidden><div><h2 id="tv-banner-t"></h2><p id="tv-banner-s"></p></div></div></div>
+  <div id="tv-lobby">
+    <div class="lobby">
+      <div class="roster r"><h3>Équipe rouge</h3><ul id="tv-list-r"><li class="muted">En attente des joueurs…</li></ul></div>
+      <div class="roster b"><h3>Équipe bleue</h3><ul id="tv-list-b"><li class="muted">En attente des joueurs…</li></ul></div>
+    </div>
+    <div class="tv-controls">
+      <label for="tv-in-r">Nom équipe rouge<input id="tv-in-r" value="Les Piments" maxlength="18"></label>
+      <label for="tv-in-b">Nom équipe bleue<input id="tv-in-b" value="Les Requins" maxlength="18"></label>
+      <label for="tv-target">Longueur de la partie<select id="tv-target"><option value="6">Courte (6 tirages)</option><option value="10" selected>Normale (10 tirages)</option><option value="16">Longue (16 tirages)</option></select></label>
+      <button class="btn or" id="tv-start">Lancer la partie</button>
+    </div>
+    <div class="joinbox"><div id="tv-qr" class="qr"></div><div><b>Pour rejoindre :</b> scannez le QR code avec le téléphone, ou ouvrez <strong id="tv-url"></strong> puis touchez « Je suis un joueur » et entrez le code.<p class="muted" id="tv-help" style="margin:.4em 0 0">Une équipe de 1 joueur peut affronter une équipe de 2 : c'est la moyenne de chaque équipe qui tire.</p></div></div>
+  </div>
+  <div class="row" id="tv-after" hidden style="margin-top:14px"><button class="btn or" id="tv-again">Rejouer</button><button class="btn ghost" id="tv-stop">Arrêter la partie</button></div>
+</div>
+
+<!-- Joueur : rejoindre -->
+<div id="join" class="view" hidden>
+  <div class="form">
+    <button class="btn ghost back" data-go="home" style="justify-self:start">← Accueil</button>
+    <h2 style="font-size:2rem">Je rejoins la partie</h2>
+    <label for="j-code">Code affiché sur la télé<input id="j-code" maxlength="4" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:.2em;font-size:1.6rem;text-align:center"></label>
+    <label for="j-name">Mon prénom<input id="j-name" maxlength="12" autocomplete="off"></label>
+    <div><b>Mon équipe</b><div class="choice" id="j-team" style="margin-top:6px"><button class="cr sel" data-v="rouge">Rouge</button><button class="cb" data-v="bleu">Bleue</button></div></div>
+    <div><b>Mon niveau</b><div class="lvl" id="j-lvl" style="margin-top:6px"></div></div>
+    <button class="btn or" id="j-go">C'est parti !</button>
+    <p class="fb" id="j-err" style="color:var(--rouge)"></p>
+  </div>
+</div>
+
+<!-- Joueur : jeu -->
+<div id="play" class="view" hidden>
+  <div class="player" id="p-root">
+    <div class="p-head"><span class="who" id="p-who"></span><span class="pulls" id="p-pulls">0 tirage</span></div>
+    <div class="minirope"><i id="p-knot"></i></div>
+    <div class="wait" id="p-wait">Connexion à la télé…</div>
+    <div id="p-game" hidden></div>
+    <button class="btn ghost back" id="p-quit" style="justify-self:center">Quitter</button>
+  </div>
+</div>
+
+<!-- Tablette à deux -->
+<div id="duosetup" class="view" hidden>
+  <div class="form" style="max-width:720px">
+    <button class="btn ghost back" data-go="home" style="justify-self:start">← Accueil</button>
+    <h2 style="font-size:2rem">Tablette à deux</h2>
+    <div class="duo" style="margin-top:0">
+      <div style="display:grid;gap:10px"><label for="d-name-r" style="color:var(--rouge)">Joueur rouge<input id="d-name-r" value="Rouge" maxlength="12"></label><div class="lvl" id="d-lvl-r"></div></div>
+      <div style="display:grid;gap:10px"><label for="d-name-b" style="color:var(--bleu)">Joueur bleu<input id="d-name-b" value="Bleu" maxlength="12"></label><div class="lvl" id="d-lvl-b"></div></div>
+    </div>
+    <label for="d-target">Longueur de la partie<select id="d-target"><option value="6">Courte (6 tirages)</option><option value="10" selected>Normale (10 tirages)</option><option value="16">Longue (16 tirages)</option></select></label>
+    <button class="btn or" id="d-go">Commencer</button>
+  </div>
+</div>
+<div id="duo" class="view" hidden>
+  <div class="row" style="justify-content:space-between;margin-bottom:10px"><button class="btn ghost back" data-go="duosetup">← Réglages</button><button class="btn ghost back" id="d-again">Rejouer</button></div>
+  <div class="arena" id="d-arena"><div class="banner" id="d-banner" hidden><div><h2 id="d-banner-t"></h2><p id="d-banner-s"></p></div></div></div>
+  <div class="duo"><div class="player rouge" id="d-pr"></div><div class="player bleu" id="d-pb"></div></div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const rnd = (a,b) => a + Math.floor(Math.random()*(b-a+1));
+const pick = arr => arr[rnd(0,arr.length-1)];
+
+/* ---------- Calculs ---------- */
+const LEVELS = [
+  {id:1, name:"Niveau 1 · 6–7 ans", hint:"Additions et soustractions jusqu'à 20, compléments à 10, doubles"},
+  {id:2, name:"Niveau 2 · 8–9 ans", hint:"Calculs jusqu'à 100, tables de 2, 3, 4, 5 et 10, moitiés"},
+  {id:3, name:"Niveau 3 · 10–11 ans", hint:"Toutes les tables, divisions, ×10 et ×100, calculs à trous"}
+];
+function makeQ(level){
+  let a,b,t = "";
+  if(level===1){
+    switch(pick(["add","add","sub","sub","comp","double"])){
+      case "add": a=rnd(1,10);b=rnd(1,10);return {q:`${a} + ${b}`,r:a+b};
+      case "sub": a=rnd(6,20);b=rnd(1,Math.min(a,10));return {q:`${a} − ${b}`,r:a-b};
+      case "comp": a=rnd(1,9);return {q:`${a} + ? = 10`,r:10-a};
+      default: a=rnd(2,10);return {q:`double de ${a}`,r:2*a};
+    }
+  }
+  if(level===2){
+    switch(pick(["add","sub","tab","tab","half","dix"])){
+      case "add": a=rnd(11,85);b=rnd(3,9);return {q:`${a} + ${b}`,r:a+b};
+      case "sub": a=rnd(21,99);b=rnd(3,9);return {q:`${a} − ${b}`,r:a-b};
+      case "tab": a=pick([2,3,4,5,10]);b=rnd(1,10);return Math.random()<.5?{q:`${a} × ${b}`,r:a*b}:{q:`${b} × ${a}`,r:a*b};
+      case "half": a=2*rnd(3,25);return {q:`moitié de ${a}`,r:a/2};
+      default: a=rnd(10,89);return Math.random()<.5?{q:`${a} + 10`,r:a+10}:{q:`${a+10} − 10`,r:a};
+    }
+  }
+  switch(pick(["mul","mul","div","add","sub","x10","trou"])){
+    case "mul": a=rnd(3,9);b=rnd(3,10);return {q:`${a} × ${b}`,r:a*b};
+    case "div": b=rnd(2,9);a=rnd(2,10);return {q:`${a*b} ÷ ${b}`,r:a};
+    case "add": a=rnd(15,68);b=rnd(12,30);return {q:`${a} + ${b}`,r:a+b};
+    case "sub": a=rnd(45,99);b=rnd(12,a-15);return {q:`${a} − ${b}`,r:a-b};
+    case "x10": a=rnd(3,99);b=pick([10,100]);return {q:`${a} × ${b}`,r:a*b};
+    default: a=rnd(3,9);b=rnd(3,9);return {q:`${a} × ? = ${a*b}`,r:b};
+  }
+}
+
+/* ---------- Son (après un toucher) ---------- */
+let actx = null;
+function beep(freq, dur=0.12, type="triangle"){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type;o.frequency.value=freq;g.gain.value=.12;
+    o.connect(g);g.connect(actx.destination);o.start();
+    g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);o.stop(actx.currentTime+dur);
+  }catch(e){}
+}
+const fanfare = () => [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.2),i*130));
+let wake = null;
+async function keepAwake(){ try{ wake = await navigator.wakeLock?.request("screen"); }catch(e){} }
+
+/* ---------- Arène (SVG) ---------- */
+const NS="http://www.w3.org/2000/svg";
+const el=(n,attrs={},parent)=>{const e=document.createElementNS(NS,n);for(const k in attrs)e.setAttribute(k,attrs[k]);parent&&parent.appendChild(e);return e;};
+function makeArena(host){
+  const svg=el("svg",{viewBox:"0 0 1000 320",role:"img","aria-label":"Tir à la corde"});
+  host.prepend(svg);
+  const GROUND=250, ROPE=165, D=150;
+  // lignes de victoire
+  for(const [x,c] of [[500-D,"var(--rouge)"],[500+D,"var(--bleu)"]]){
+    el("line",{x1:x,y1:GROUND-6,x2:x,y2:320,stroke:c,"stroke-width":8,"stroke-dasharray":"14 10"},svg);
+  }
+  el("line",{x1:500,y1:GROUND+4,x2:500,y2:320,stroke:"var(--ink)","stroke-width":3,opacity:.35},svg);
+  const grp=el("g",{},svg);
+  el("path",{d:`M40 ${ROPE} Q 270 ${ROPE+8} 500 ${ROPE} T 960 ${ROPE}`,stroke:"var(--corde)","stroke-width":11,fill:"none","stroke-linecap":"round"},grp);
+  el("path",{d:`M40 ${ROPE} Q 270 ${ROPE+8} 500 ${ROPE} T 960 ${ROPE}`,stroke:"#7d5420","stroke-width":11,fill:"none","stroke-dasharray":"3 9",opacity:.5},grp);
+  const ribbon=el("g",{},grp);
+  el("path",{d:`M500 ${ROPE} l-14 46 l14 -10 l14 10 z`,fill:"var(--or)",stroke:"var(--ink)","stroke-width":3,"stroke-linejoin":"round"},ribbon);
+  el("circle",{cx:500,cy:ROPE,r:11,fill:"var(--or)",stroke:"var(--ink)","stroke-width":3},ribbon);
+  const teamsG=el("g",{},grp);
+  let shown=0, target=0, tgt=10, lastTeams="";
+  function figure(parent,x,dir,color,name,lean){
+    const g=el("g",{transform:`translate(${x} ${GROUND})`},parent);
+    const sx=-dir*(14+lean*16), hx=sx-dir*4;
+    el("line",{x1:0,y1:-58,x2:-dir*16,y2:0,stroke:"var(--ink)","stroke-width":9,"stroke-linecap":"round"},g);
+    el("line",{x1:0,y1:-58,x2:dir*16,y2:0,stroke:"var(--ink)","stroke-width":9,"stroke-linecap":"round"},g);
+    el("line",{x1:0,y1:-58,x2:sx,y2:-112,stroke:color,"stroke-width":24,"stroke-linecap":"round"},g);
+    el("line",{x1:sx,y1:-106,x2:dir*26,y2:ROPE-GROUND,stroke:color,"stroke-width":9,"stroke-linecap":"round"},g);
+    el("circle",{cx:hx,cy:-140,r:20,fill:"#f2c69b",stroke:"var(--ink)","stroke-width":3},g);
+    if(name){const tx=el("text",{x:0,y:40,"text-anchor":"middle","font-family":"Baloo 2, sans-serif","font-weight":800,"font-size":24,fill:"var(--ink)"},g);tx.textContent=name;}
+  }
+  function drawTeams(red,blue,lean){
+    teamsG.innerHTML="";
+    const draw=(list,side)=>{
+      const color=side<0?"var(--rouge)":"var(--bleu)";
+      const show=list.length?list.slice(0,4):[""];
+      show.forEach((n,i)=>figure(teamsG,500+side*(95+i*72),side,color,n,lean*side));
+      if(list.length>4){const t=el("text",{x:500+side*(95+4*72)-side*10,y:GROUND-170,"text-anchor":"middle","font-family":"Baloo 2, sans-serif","font-weight":800,"font-size":26,fill:color},teamsG);t.textContent="+"+(list.length-4);}
+    };
+    draw(red,-1);draw(blue,1);
+  }
+  let redN=[],blueN=[],lean=0;
+  function frame(){
+    shown+= (target-shown)*0.12;
+    if(Math.abs(target-shown)<0.001) shown=target;
+    const x=Math.max(-1.08,Math.min(1.08,shown/tgt))*D;
+    grp.setAttribute("transform",`translate(${x.toFixed(1)} 0)`);
+    const l=Math.max(-1,Math.min(1,shown/tgt));
+    if(Math.abs(l-lean)>0.04){lean=l;drawTeams(redN,blueN,lean);}
+    requestAnimationFrame(frame);
+  }
+  drawTeams([],[],0);requestAnimationFrame(frame);
+  return {
+    set(pos,targetLen){target=pos;tgt=targetLen;},
+    reset(){shown=0;target=0;},
+    teams(r,b){const k=r.join("|")+"#"+b.join("|");if(k!==lastTeams){lastTeams=k;redN=r;blueN=b;drawTeams(r,b,lean);}}
+  };
+}
+
+/* ---------- Pavé de calcul (téléphone et tablette) ---------- */
+function makeQuiz(root,{level,onCorrect}){
+  root.innerHTML=`<div class="qcard"><div class="q"></div><div class="a" aria-live="polite"></div></div><p class="fb"></p>
+    <div class="pad">${[7,8,9,4,5,6,1,2,3].map(n=>`<button data-k="${n}">${n}</button>`).join("")}<button class="del" data-k="del" aria-label="Effacer">⌫</button><button data-k="0">0</button><button class="go" data-k="ok">OK</button></div>`;
+  const card=root.querySelector(".qcard"),qEl=root.querySelector(".q"),aEl=root.querySelector(".a"),fb=root.querySelector(".fb"),pad=root.querySelector(".pad");
+  let cur=null,typed="",enabled=false,locked=false,lastQ="";
+  function next(){let n;do{n=makeQ(level)}while(n.q===lastQ);lastQ=n.q;cur=n;typed="";aEl.textContent="";qEl.textContent=n.q.replace("?","▢");card.classList.remove("ok","ko");}
+  function press(k){
+    if(!enabled||locked)return;
+    if(k==="del"){typed=typed.slice(0,-1);}
+    else if(k==="ok"){
+      if(!typed)return;
+      if(Number(typed)===cur.r){
+        card.classList.add("ok");fb.textContent=pick(["Bravo !","Super !","Tire !","Oui !","Bien joué !"]);fb.style.color="#1c7a33";
+        beep(880);onCorrect();locked=true;setTimeout(()=>{locked=false;next();},350);
+      }else{
+        card.classList.remove("ko");void card.offsetWidth;card.classList.add("ko");
+        fb.textContent=`Presque ! C'était ${cur.r}`;fb.style.color="var(--rouge)";
+        beep(196,.2,"square");locked=true;setTimeout(()=>{locked=false;fb.textContent="";next();},1300);
+      }
+      return;
+    }else if(typed.length<4){typed+=k;}
+    aEl.textContent=typed;
+  }
+  pad.addEventListener("click",e=>{const b=e.target.closest("button");if(b)press(b.dataset.k);});
+  next();
+  return {
+    press,
+    enable(on){enabled=on;pad.querySelectorAll("button").forEach(b=>b.disabled=!on);if(on&&!fb.textContent)fb.textContent="";},
+    setLevel(l){level=l;next();},
+    message(t){fb.textContent=t;fb.style.color="var(--ink)";}
+  };
+}
+function levelPicker(host,init,onPick){
+  host.innerHTML=LEVELS.map(l=>`<button data-l="${l.id}" class="${l.id===init?"sel":""}">${l.name}<small>${l.hint}</small></button>`).join("");
+  host.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;host.querySelectorAll("button").forEach(x=>x.classList.toggle("sel",x===b));onPick(Number(b.dataset.l));});
+}
+
+/* ---------- Navigation ---------- */
+const views=["home","tvsetup","join","play","duosetup","duo"];
+let leaveCurrent=null;
+function show(v){
+  if(leaveCurrent){const f=leaveCurrent;leaveCurrent=null;f();}
+  views.forEach(x=>$(x).hidden=x!==v);
+  window.scrollTo(0,0);
+  if(v==="tvsetup")startTV();
+}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-go]");if(b)show(b.dataset.go);});
+
+/* ---------- Réseau : liaison directe télé ↔ téléphones (PeerJS) ---------- */
+const CODE_CHARS="ABCDEFGHJKMNPQRSTUVWXYZ";
+const PREFIX="tirelacorde-v1-";
+const clean=s=>String(s??"").replace(/[^\p{L}\p{N} '\-]/gu,"").slice(0,18);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const baseURL=()=>location.href.split("#")[0];
+const hasPeer=()=>typeof window.Peer==="function";
+
+/* ---------- Écran TV ---------- */
+let tvArena=null;
+function startTV(){
+  if(!tvArena)tvArena=makeArena($("tv-arena"));
+  keepAwake();
+  const S={round:0,status:"attente",target:10,winner:null,pos:0,startAt:0};
+  const best=new Map();   // id téléphone -> meilleur nombre de tirages de la manche
+  const conns=new Map();  // id téléphone -> {conn, info}
+  let peer=null,alive=true,code="",players=[];
+  $("tv-banner").hidden=true;$("tv-lobby").hidden=false;$("tv-after").hidden=true;$("tv-start").disabled=true;
+  if(!hasPeer()){$("tv-help").textContent="La connexion n'a pas pu se charger. Vérifiez internet puis rechargez la page.";return;}
+  const names=()=>({r:clean($("tv-in-r").value)||"Rouges",b:clean($("tv-in-b").value)||"Bleus"});
+  function stateMsg(){const n=names();return {type:"state",round:S.round,status:S.status,target:S.target,pos:Math.round(S.pos*100)/100,winner:S.winner,msLeft:Math.max(0,S.startAt-Date.now()),nr:n.r,nb:n.b};}
+  function push(){const m=stateMsg();conns.forEach(c=>{try{if(c.conn.open)c.conn.send(m);}catch(e){}});}
+  function openPeer(){
+    code=Array.from({length:4},()=>pick([...CODE_CHARS])).join("");
+    $("tv-code").textContent=code;
+    const url=baseURL()+"#"+code;
+    $("tv-url").textContent=url.replace(/^https?:\/\//,"");
+    const qr=$("tv-qr");qr.innerHTML="";
+    try{new QRCode(qr,{text:url,width:148,height:148,colorDark:"#12343a",colorLight:"#ffffff"});}catch(e){qr.hidden=true;}
+    $("tv-conn").textContent="Connexion…";
+    peer=new Peer(PREFIX+code.toLowerCase(),{debug:0});
+    peer.on("open",()=>{if(alive)$("tv-conn").textContent="● Télé prête";});
+    peer.on("error",e=>{
+      if(!alive)return;
+      if(e.type==="unavailable-id"){try{peer.destroy();}catch(x){}openPeer();return;}
+      $("tv-conn").textContent="Problème de connexion ("+e.type+")";
+    });
+    peer.on("disconnected",()=>{if(alive){$("tv-conn").textContent="Reconnexion…";try{peer.reconnect();}catch(x){}}});
+    peer.on("connection",conn=>{
+      conn.on("open",()=>{if(!conns.has(conn.peer))conns.set(conn.peer,{conn,info:null});else conns.get(conn.peer).conn=conn;try{conn.send(stateMsg());}catch(x){}});
+      conn.on("data",d=>onMsg(conn,d));
+      conn.on("close",()=>{const c=conns.get(conn.peer);if(c&&c.conn===conn)conns.delete(conn.peer);recompute();});
+      conn.on("error",()=>{});
+    });
+  }
+  function onMsg(conn,d){
+    if(!d||typeof d!=="object")return;
+    let c=conns.get(conn.peer);if(!c){c={conn,info:null};conns.set(conn.peer,c);}
+    c.conn=conn;
+    if(d.type==="hello"){
+      const lv=Number(d.level);
+      c.info={name:clean(d.name).slice(0,12)||"?",team:d.team==="bleu"?"bleu":"rouge",level:[1,2,3].includes(lv)?lv:1,round:c.info?.round||0,pulls:c.info?.pulls||0};
+    }else if(d.type==="pulls"&&c.info){
+      c.info.round=Number(d.round)||0;c.info.pulls=Math.max(0,Math.min(999,Number(d.pulls)||0));
+    }
+    recompute();
+  }
+  function recompute(){
+    if(!alive)return;
+    players=[...conns.entries()].filter(([,c])=>c.info).map(([id,c])=>({id,...c.info}));
+    if(S.status==="jeu"){
+      for(const p of players){
+        if(p.round!==S.round)continue;
+        const prev=best.get(p.id);
+        best.set(p.id,{team:p.team,pulls:Math.max(prev?.pulls||0,p.pulls)});
+      }
+      const t={rouge:{s:0,n:0},bleu:{s:0,n:0}};
+      for(const v of best.values()){t[v.team].s+=v.pulls;t[v.team].n++;}
+      const r=t.rouge.n?t.rouge.s/t.rouge.n:0,b=t.bleu.n?t.bleu.s/t.bleu.n:0;
+      S.pos=b-r;
+      if(Math.abs(S.pos)>=S.target){S.status="fini";S.winner=S.pos>0?"bleu":"rouge";endBanner();}
+      tvArena.set(S.pos,S.target);
+    }
+    const nm=team=>players.filter(p=>p.team===team).map(p=>p.name);
+    tvArena.teams(nm("rouge"),nm("bleu"));
+    const li=team=>{const ps=players.filter(p=>p.team===team);return ps.length?ps.map(p=>`<li>${esc(p.name)} <small>niv. ${p.level}</small></li>`).join(""):`<li class="muted">En attente des joueurs…</li>`;};
+    $("tv-list-r").innerHTML=li("rouge");$("tv-list-b").innerHTML=li("bleu");
+    const ok=players.some(p=>p.team==="rouge")&&players.some(p=>p.team==="bleu");
+    $("tv-start").disabled=!ok;
+    $("tv-start").textContent=ok?"Lancer la partie":"Il faut un joueur dans chaque équipe";
+    push();
+  }
+  function endBanner(){
+    const n=names();$("tv-banner-t").textContent=(S.winner==="rouge"?n.r:n.b)+" gagnent !";
+    $("tv-banner-s").textContent="Bravo à tous les calculateurs";$("tv-banner").hidden=false;$("tv-after").hidden=false;fanfare();
+  }
+  const setNames=()=>{const n=names();$("tv-name-r").textContent=n.r;$("tv-name-b").textContent=n.b;push();};
+  $("tv-in-r").oninput=$("tv-in-b").oninput=setNames;setNames();
+  let cd=null;
+  function launch(){
+    beep(660);S.target=Number($("tv-target").value)||10;S.round=Date.now();S.status="decompte";S.winner=null;S.pos=0;S.startAt=Date.now()+3000;best.clear();
+    tvArena.reset();tvArena.set(0,S.target);
+    $("tv-lobby").hidden=true;$("tv-after").hidden=true;$("tv-banner").hidden=false;$("tv-banner-s").textContent="Préparez vos doigts !";push();
+    let n=3;$("tv-banner-t").textContent=n;clearInterval(cd);
+    cd=setInterval(()=>{if(!alive){clearInterval(cd);return;}n--;if(n>0){$("tv-banner-t").textContent=n;beep(660);}else{clearInterval(cd);beep(1046,.3);$("tv-banner").hidden=true;S.status="jeu";recompute();}},1000);
+  }
+  $("tv-start").onclick=launch;
+  $("tv-again").onclick=launch;
+  $("tv-stop").onclick=()=>{clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
+  const iv=setInterval(()=>{if(alive)push();},2500);
+  leaveCurrent=()=>{alive=false;clearInterval(iv);clearInterval(cd);try{peer&&peer.destroy();}catch(e){}tvArena.reset();};
+  openPeer();recompute();
+}
+
+/* ---------- Joueur ---------- */
+let jTeam="rouge",jLevel=1;
+try{const s=JSON.parse(localStorage.getItem("corde-joueur")||"{}");if(s.name)$("j-name").value=s.name;if(s.team)jTeam=s.team;if(s.level)jLevel=s.level;}catch(e){}
+$("j-team").querySelectorAll("button").forEach(b=>b.classList.toggle("sel",b.dataset.v===jTeam));
+$("j-team").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;jTeam=b.dataset.v;$("j-team").querySelectorAll("button").forEach(x=>x.classList.toggle("sel",x===b));});
+levelPicker($("j-lvl"),jLevel,l=>jLevel=l);
+$("j-go").onclick=()=>{
+  const code=$("j-code").value.toUpperCase().replace(/[^A-Z]/g,"");const name=clean($("j-name").value).slice(0,12);
+  if(code.length!==4){$("j-err").textContent="Le code a 4 lettres. Regarde la télé.";return;}
+  if(!name){$("j-err").textContent="Écris ton prénom.";return;}
+  $("j-err").textContent="";
+  try{localStorage.setItem("corde-joueur",JSON.stringify({name,team:jTeam,level:jLevel}));}catch(e){}
+  beep(660);startPlayer(code,name,jTeam,jLevel);
+};
+function startPlayer(code,name,team,level){
+  show("play");keepAwake();
+  $("p-root").className="player "+team;
+  $("p-who").textContent=name;
+  const wait=$("p-wait"),game=$("p-game");
+  const showWait=t=>{wait.hidden=false;game.hidden=true;wait.textContent=t;quiz.enable(false);};
+  let pulls=0,myRound=0,peer=null,conn=null,alive=true,retry=null,cdTimer=null;
+  const setPulls=()=>{$("p-pulls").textContent=pulls+(pulls>1?" tirages":" tirage");};setPulls();
+  const send=m=>{try{if(conn&&conn.open)conn.send(m);}catch(e){}};
+  const quiz=makeQuiz(game,{level,onCorrect:()=>{pulls++;setPulls();send({type:"pulls",round:myRound,pulls});}});
+  showWait("Connexion à la télé…");
+  const later=(fn,ms)=>{clearTimeout(retry);retry=setTimeout(()=>{if(alive)fn();},ms);};
+  function connect(){
+    if(!hasPeer()){showWait("La connexion n'a pas pu se charger. Vérifie internet puis recharge la page.");return;}
+    if(!peer||peer.destroyed){
+      peer=new Peer({debug:0});
+      peer.on("open",dial);
+      peer.on("error",e=>{
+        if(!alive)return;
+        if(e.type==="peer-unavailable")showWait(`Aucune télé trouvée avec le code ${code}. Vérifie les lettres sur la télé.`);
+        else showWait("Problème de connexion. Nouvel essai…");
+        later(connect,4000);
+      });
+      peer.on("disconnected",()=>{if(alive)try{peer.reconnect();}catch(x){}});
+    }else if(peer.open)dial();
+  }
+  function dial(){
+    if(!alive)return;
+    const c=peer.connect(PREFIX+code.toLowerCase(),{reliable:true});
+    conn=c;
+    c.on("open",()=>{clearTimeout(retry);send({type:"hello",name,team,level});if(myRound)send({type:"pulls",round:myRound,pulls});});
+    c.on("data",onState);
+    c.on("close",()=>{if(alive&&conn===c){showWait("La télé s'est déconnectée. Nouvel essai…");later(connect,2500);}});
+    c.on("error",()=>{});
+  }
+  function onState(s){
+    if(!s||s.type!=="state")return;
+    const target=Number(s.target)||10,pos=Number(s.pos)||0;
+    $("p-knot").style.left=(50+Math.max(-50,Math.min(50,pos/target*50)))+"%";
+    if(s.round&&s.round!==myRound){myRound=s.round;pulls=0;setPulls();send({type:"pulls",round:myRound,pulls:0});}
+    clearInterval(cdTimer);
+    if(s.status==="attente")showWait(`Tu es dans l'équipe ${clean(team==="rouge"?s.nr:s.nb)}. Attends le départ !`);
+    else if(s.status==="decompte"){
+      const startAt=Date.now()+(Number(s.msLeft)||0);
+      const tick=()=>{const left=Math.ceil((startAt-Date.now())/1000);showWait(left>0?`Prêt ? ${left}…`:"Partez !");};
+      tick();cdTimer=setInterval(tick,250);
+    }
+    else if(s.status==="jeu"){wait.hidden=true;game.hidden=false;quiz.enable(true);}
+    else if(s.status==="fini"){
+      const won=s.winner===team;
+      if(!wait.hidden&&wait.dataset.done===String(s.round))return;
+      showWait(won?`Victoire ! Tu as tiré ${pulls} fois.`:`Perdu de peu… Tu as tiré ${pulls} fois. Revanche ?`);
+      wait.dataset.done=String(s.round);if(won)fanfare();
+    }
+  }
+  const keys=e=>{if(/^[0-9]$/.test(e.key))quiz.press(e.key);else if(e.key==="Backspace")quiz.press("del");else if(e.key==="Enter")quiz.press("ok");};
+  document.addEventListener("keydown",keys);
+  leaveCurrent=()=>{alive=false;clearTimeout(retry);clearInterval(cdTimer);document.removeEventListener("keydown",keys);try{peer&&peer.destroy();}catch(e){}};
+  $("p-quit").onclick=()=>show("join");
+  connect();
+}
+
+/* Lien direct depuis le QR code : …/#ABCD */
+const hashCode=(location.hash||"").replace("#","").toUpperCase();
+if(/^[A-Z]{4}$/.test(hashCode)){$("j-code").value=hashCode;show("join");}
+
+/* ---------- Tablette à deux ---------- */
+let dl={r:1,b:3};
+levelPicker($("d-lvl-r"),1,l=>dl.r=l);
+levelPicker($("d-lvl-b"),3,l=>dl.b=l);
+let duoArena=null;
+function startDuo(){
+  show("duo");keepAwake();
+  if(!duoArena)duoArena=makeArena($("d-arena"));
+  const target=Number($("d-target").value)||10;
+  const nr=clean($("d-name-r").value).slice(0,12)||"Rouge",nb=clean($("d-name-b").value).slice(0,12)||"Bleu";
+  duoArena.reset();duoArena.teams([nr],[nb]);duoArena.set(0,target);
+  let pos=0,over=false;
+  const end=w=>{over=true;qr.enable(false);qb.enable(false);$("d-banner-t").textContent=(w==="r"?nr:nb)+" gagne !";$("d-banner-s").textContent="Touchez Rejouer pour une revanche";$("d-banner").hidden=false;fanfare();};
+  const qr=makeQuiz($("d-pr"),{level:dl.r,onCorrect:()=>{if(over)return;pos--;duoArena.set(pos,target);if(pos<=-target)end("r");}});
+  const qb=makeQuiz($("d-pb"),{level:dl.b,onCorrect:()=>{if(over)return;pos++;duoArena.set(pos,target);if(pos>=target)end("b");}});
+  qr.enable(false);qb.enable(false);
+  $("d-banner").hidden=false;$("d-banner-s").textContent=`${nr} contre ${nb}`;let n=3;$("d-banner-t").textContent=n;
+  let alive=true;leaveCurrent=()=>{alive=false;};
+  const iv=setInterval(()=>{if(!alive){clearInterval(iv);return;}n--;if(n>0){$("d-banner-t").textContent=n;beep(660);}else{clearInterval(iv);beep(1046,.3);$("d-banner").hidden=true;qr.enable(true);qb.enable(true);}},1000);
+}
+$("d-go").onclick=()=>{beep(660);startDuo();};
+$("d-again").onclick=startDuo;
+})();
+</script>
+</body>
+</html>
