@@ -152,7 +152,7 @@ label{font-weight:800;font-size:.9rem;display:grid;gap:6px}
 
 <!-- TV -->
 <div id="tvsetup" class="view" hidden>
-  <div class="row" style="justify-content:space-between"><button class="btn ghost back" data-go="home">← Accueil</button><span class="muted" id="tv-conn"></span></div>
+  <div class="row" style="justify-content:space-between"><button class="btn ghost back" data-go="home">← Accueil</button><div class="row"><button class="btn ghost back music-btn" id="tv-music"></button><span class="muted" id="tv-conn"></span></div></div>
   <div class="scorebar">
     <div class="team-name r" id="tv-name-r">Les Piments</div>
     <div class="code-box"><small>Code de la partie</small><strong id="tv-code">····</strong></div>
@@ -214,7 +214,7 @@ label{font-weight:800;font-size:.9rem;display:grid;gap:6px}
   </div>
 </div>
 <div id="duo" class="view" hidden>
-  <div class="row" style="justify-content:space-between;margin-bottom:10px"><button class="btn ghost back" data-go="duosetup">← Réglages</button><button class="btn ghost back" id="d-again">Rejouer</button></div>
+  <div class="row" style="justify-content:space-between;margin-bottom:10px"><button class="btn ghost back" data-go="duosetup">← Réglages</button><div class="row"><button class="btn ghost back music-btn" id="d-music"></button><button class="btn ghost back" id="d-again">Rejouer</button></div></div>
   <div class="arena" id="d-arena"><div class="banner" id="d-banner" hidden><div><h2 id="d-banner-t"></h2><p id="d-banner-s"></p></div></div></div>
   <div class="duo"><div class="player rouge" id="d-pr"></div><div class="player bleu" id="d-pb"></div></div>
 </div>
@@ -273,6 +273,66 @@ function beep(freq, dur=0.12, type="triangle"){
     g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);o.stop(actx.currentTime+dur);
   }catch(e){}
 }
+
+/* ---------- Musique de fond 8 bits (air original, généré en direct) ---------- */
+const Music=(()=>{
+  const LEAD=[
+    67,72,76,79,76,0,72,74,  77,0,76,74,72,0,69,0,
+    71,74,79,0,77,76,74,0,   76,72,67,0,72,0,0,0,
+    69,72,76,81,79,0,76,0,   77,76,74,72,74,0,77,0,
+    79,0,77,0,76,74,71,74,   72,0,79,0,72,0,0,0];
+  const CH=[[48,55],[53,60],[43,50],[48,55],[45,52],[53,60],[43,50],[48,55]];
+  let on=true,playing=false,step=0,next=0,timer=null,boost=0,master=null;
+  try{on=localStorage.getItem("corde-musique")!=="off";}catch(e){}
+  const hz=m=>440*Math.pow(2,(m-69)/12);
+  function ctx(){actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume();return actx;}
+  function tone(t,m,dur,type,vol){
+    const c=ctx(),o=c.createOscillator(),g=c.createGain();
+    o.type=type;o.frequency.value=hz(m);
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.02);
+  }
+  let noiseBuf=null;
+  function hit(t,dur,vol,hp){
+    const c=ctx();
+    if(!noiseBuf){noiseBuf=c.createBuffer(1,c.sampleRate*.3,c.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;}
+    const n=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
+    n.buffer=noiseBuf;f.type="highpass";f.frequency.value=hp;
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    n.connect(f);f.connect(g);g.connect(master);n.start(t);n.stop(t+dur+.02);
+  }
+  function tick(){
+    const c=ctx();
+    const eighth=60/(150+boost*40)/2;
+    while(next<c.currentTime+.15){
+      const i=step%64,bar=Math.floor(i/8),b=i%8,ch=CH[bar];
+      const m=LEAD[i];if(m)tone(next,m,eighth*1.6,"square",.05);
+      if(b%2===0)tone(next,b%4===0?ch[0]:ch[1],eighth*1.4,"triangle",.16);
+      hit(next,.03,.025,7000);
+      if(b===2||b===6)hit(next,.09,.06,1800);
+      step++;next+=eighth;
+    }
+  }
+  function start(){
+    if(!on||playing)return;
+    const c=ctx();master=c.createGain();master.gain.value=.9;master.connect(c.destination);
+    playing=true;step=0;next=c.currentTime+.05;tick();timer=setInterval(tick,50);
+  }
+  function stop(){
+    if(!playing)return;playing=false;clearInterval(timer);
+    try{const g=master,c=ctx();g.gain.setTargetAtTime(0,c.currentTime,.08);setTimeout(()=>g.disconnect(),600);}catch(e){}
+  }
+  function label(){document.querySelectorAll(".music-btn").forEach(b=>{b.textContent=on?"♪ Musique : oui":"♪ Musique : non";b.setAttribute("aria-pressed",on);});}
+  function toggle(){on=!on;try{localStorage.setItem("corde-musique",on?"on":"off");}catch(e){}label();if(!on)stop();else if(wanted)start();}
+  let wanted=false;
+  document.addEventListener("click",e=>{if(e.target.closest(".music-btn"))toggle();});
+  label();
+  return {
+    play(){wanted=true;start();},
+    stop(){wanted=false;stop();},
+    intensity(x){boost=Math.max(0,Math.min(1,(x-.6)/.4));}
+  };
+})();
 const fanfare = () => [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.2),i*130));
 let wake = null;
 async function keepAwake(){ try{ wake = await navigator.wakeLock?.request("screen"); }catch(e){} }
@@ -464,7 +524,7 @@ async function startTV(){
       const r=t.rouge.n?t.rouge.s/t.rouge.n:0,b=t.bleu.n?t.bleu.s/t.bleu.n:0;
       S.pos=b-r;
       if(Math.abs(S.pos)>=S.target){S.status="fini";S.winner=S.pos>0?"bleu":"rouge";endBanner();}
-      tvArena.set(S.pos,S.target);
+      tvArena.set(S.pos,S.target);Music.intensity(Math.abs(S.pos)/S.target);
     }
     const nm=team=>list.filter(p=>p.team===team).map(p=>p.name);
     tvArena.teams(nm("rouge"),nm("bleu"));
@@ -477,23 +537,23 @@ async function startTV(){
   }
   function endBanner(){
     const n=names();$("tv-banner-t").textContent=(S.winner==="rouge"?n.r:n.b)+" gagnent !";
-    $("tv-banner-s").textContent="Bravo à tous les calculateurs";$("tv-banner").hidden=false;$("tv-after").hidden=false;fanfare();
+    Music.stop();$("tv-banner-s").textContent="Bravo à tous les calculateurs";$("tv-banner").hidden=false;$("tv-after").hidden=false;setTimeout(fanfare,300);
   }
   const setNames=()=>{const n=names();$("tv-name-r").textContent=n.r;$("tv-name-b").textContent=n.b;push();};
   $("tv-in-r").oninput=$("tv-in-b").oninput=setNames;setNames();
   let cd=null;
   function launch(){
-    beep(660);S.target=Number($("tv-target").value)||10;S.round=Date.now();S.status="decompte";S.winner=null;S.pos=0;S.startAt=Date.now()+3000;best.clear();
+    Music.stop();Music.intensity(0);beep(660);S.target=Number($("tv-target").value)||10;S.round=Date.now();S.status="decompte";S.winner=null;S.pos=0;S.startAt=Date.now()+3000;best.clear();
     tvArena.reset();tvArena.set(0,S.target);
     $("tv-lobby").hidden=true;$("tv-after").hidden=true;$("tv-banner").hidden=false;$("tv-banner-s").textContent="Préparez vos doigts !";push();
     let n=3;$("tv-banner-t").textContent=n;clearInterval(cd);
-    cd=setInterval(()=>{if(!alive){clearInterval(cd);return;}n--;if(n>0){$("tv-banner-t").textContent=n;beep(660);}else{clearInterval(cd);beep(1046,.3);$("tv-banner").hidden=true;S.status="jeu";recompute();}},1000);
+    cd=setInterval(()=>{if(!alive){clearInterval(cd);return;}n--;if(n>0){$("tv-banner-t").textContent=n;beep(660);}else{clearInterval(cd);beep(1046,.3);$("tv-banner").hidden=true;S.status="jeu";Music.play();recompute();}},1000);
   }
   $("tv-start").onclick=launch;
   $("tv-again").onclick=launch;
-  $("tv-stop").onclick=()=>{clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
+  $("tv-stop").onclick=()=>{Music.stop();clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
   const iv=setInterval(()=>{if(alive)recompute();},2500);
-  leaveCurrent=()=>{alive=false;clearInterval(iv);clearInterval(cd);
+  leaveCurrent=()=>{alive=false;Music.stop();clearInterval(iv);clearInterval(cd);
     if(client){try{client.publish(base+"/state","",{retain:true});}catch(e){}setTimeout(()=>{try{client.end(true);}catch(e){}},300);}
     tvArena.reset();};
   $("tv-conn").textContent="Connexion…";
@@ -598,13 +658,13 @@ function startDuo(){
   const nr=clean($("d-name-r").value).slice(0,12)||"Rouge",nb=clean($("d-name-b").value).slice(0,12)||"Bleu";
   duoArena.reset();duoArena.teams([nr],[nb]);duoArena.set(0,target);
   let pos=0,over=false;
-  const end=w=>{over=true;qr.enable(false);qb.enable(false);$("d-banner-t").textContent=(w==="r"?nr:nb)+" gagne !";$("d-banner-s").textContent="Touchez Rejouer pour une revanche";$("d-banner").hidden=false;fanfare();};
-  const qr=makeQuiz($("d-pr"),{level:dl.r,onCorrect:()=>{if(over)return;pos--;duoArena.set(pos,target);if(pos<=-target)end("r");}});
-  const qb=makeQuiz($("d-pb"),{level:dl.b,onCorrect:()=>{if(over)return;pos++;duoArena.set(pos,target);if(pos>=target)end("b");}});
+  const end=w=>{over=true;Music.stop();qr.enable(false);qb.enable(false);$("d-banner-t").textContent=(w==="r"?nr:nb)+" gagne !";$("d-banner-s").textContent="Touchez Rejouer pour une revanche";$("d-banner").hidden=false;setTimeout(fanfare,300);};
+  const qr=makeQuiz($("d-pr"),{level:dl.r,onCorrect:()=>{if(over)return;pos--;duoArena.set(pos,target);Music.intensity(Math.abs(pos)/target);if(pos<=-target)end("r");}});
+  const qb=makeQuiz($("d-pb"),{level:dl.b,onCorrect:()=>{if(over)return;pos++;duoArena.set(pos,target);Music.intensity(Math.abs(pos)/target);if(pos>=target)end("b");}});
   qr.enable(false);qb.enable(false);
   $("d-banner").hidden=false;$("d-banner-s").textContent=`${nr} contre ${nb}`;let n=3;$("d-banner-t").textContent=n;
-  let alive=true;leaveCurrent=()=>{alive=false;};
-  const iv=setInterval(()=>{if(!alive){clearInterval(iv);return;}n--;if(n>0){$("d-banner-t").textContent=n;beep(660);}else{clearInterval(iv);beep(1046,.3);$("d-banner").hidden=true;qr.enable(true);qb.enable(true);}},1000);
+  let alive=true;Music.stop();leaveCurrent=()=>{alive=false;Music.stop();};
+  const iv=setInterval(()=>{if(!alive){clearInterval(iv);return;}n--;if(n>0){$("d-banner-t").textContent=n;beep(660);}else{clearInterval(iv);beep(1046,.3);$("d-banner").hidden=true;Music.intensity(0);Music.play();qr.enable(true);qb.enable(true);}},1000);
 }
 $("d-go").onclick=()=>{beep(660);startDuo();};
 $("d-again").onclick=startDuo;
