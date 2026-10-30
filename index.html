@@ -315,6 +315,7 @@ const Music=(()=>{
   }
   function start(){
     if(!on||playing)return;
+    try{ctx();}catch(e){return;}
     const c=ctx();master=c.createGain();master.gain.value=.9;master.connect(c.destination);
     playing=true;step=0;next=c.currentTime+.05;tick();timer=setInterval(tick,50);
   }
@@ -327,6 +328,8 @@ const Music=(()=>{
   let wanted=false;
   document.addEventListener("click",e=>{if(e.target.closest(".music-btn"))toggle();});
   label();
+  const unlock=()=>{try{ctx();}catch(e){}};
+  document.addEventListener("pointerdown",unlock,{once:true});
   return {
     play(){wanted=true;start();},
     stop(){wanted=false;stop();},
@@ -448,23 +451,32 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-go]");if(b
 const CODE_CHARS="ABCDEFGHJKMNPQRSTUVWXYZ";
 const clean=s=>String(s??"").replace(/[^\p{L}\p{N} '\-]/gu,"").slice(0,18);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const baseURL=()=>location.href.split("#")[0];
-const BROKERS=["wss://broker.hivemq.com:8884/mqtt","wss://broker.emqx.io:8084/mqtt"];
+const SITE="https://tire-la-corde.vercel.app/";
+const baseURL=()=>location.protocol==="https:"?location.href.split("#")[0]:SITE; // ouvert depuis un fichier : le QR pointe vers le site en ligne
+const BROKERS=[
+  {url:"wss://broker.hivemq.com:8884/mqtt"},
+  {url:"wss://public.cloud.shiftr.io",username:"public",password:"public"},
+  {url:"wss://broker.emqx.io:8084/mqtt"}];
 const topicBase=code=>"tirelacorde/v2/"+code.toLowerCase();
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
-function connectBroker(opts,onStatus){
-  // Essaie chaque relais tour à tour ; rend un client connecté ou null.
+function connectBroker(opts,onStatus,only){
+  // Essaie chaque relais tour à tour ; rend {client,index} ou null. Ne reste jamais bloqué.
   return new Promise(resolve=>{
     if(typeof window.mqtt?.connect!=="function"){resolve(null);return;}
-    let i=0;
+    const order=only!=null?[only]:BROKERS.map((_,i)=>i);
+    let k=0;
     const tryNext=()=>{
-      if(i>=BROKERS.length){resolve(null);return;}
-      const url=BROKERS[i++];let done=false;
-      const c=mqtt.connect(url,{connectTimeout:6000,reconnectPeriod:0,clean:true,clientId:"tlc_"+uid(),...opts});
-      const fail=()=>{if(done)return;done=true;try{c.end(true);}catch(e){}tryNext();};
-      const t=setTimeout(fail,7000);
-      c.once("connect",()=>{if(done)return;done=true;clearTimeout(t);c.options.reconnectPeriod=2000;resolve(c);});
-      c.once("error",()=>{clearTimeout(t);fail();});
+      if(k>=order.length){resolve(null);return;}
+      const idx=order[k++],br=BROKERS[idx];let done=false,c=null,t=null;
+      onStatus&&onStatus(k,order.length);
+      const fail=()=>{if(done)return;done=true;clearTimeout(t);try{c&&c.end(true);}catch(e){}tryNext();};
+      t=setTimeout(fail,6000);
+      try{
+        c=mqtt.connect(br.url,{connectTimeout:5500,reconnectPeriod:0,clean:true,keepalive:30,clientId:"tlc_"+uid(),username:br.username,password:br.password,...opts});
+      }catch(e){fail();return;}
+      c.once("connect",()=>{if(done)return;done=true;clearTimeout(t);c.options.reconnectPeriod=2000;resolve({client:c,index:idx});});
+      c.once("error",fail);
+      c.once("close",()=>{if(!done)fail();});
     };
     tryNext();
   });
@@ -476,6 +488,7 @@ let tvArena=null;
 async function startTV(){
   if(!tvArena)tvArena=makeArena($("tv-arena"));
   keepAwake();
+  Music.intensity(0);Music.play();
   const S={round:0,status:"attente",target:10,winner:null,pos:0,startAt:0};
   const best=new Map();     // joueur -> meilleur nombre de tirages de la manche
   const players=new Map();  // joueur -> {name,team,level,round,pulls,seen}
@@ -537,13 +550,13 @@ async function startTV(){
   }
   function endBanner(){
     const n=names();$("tv-banner-t").textContent=(S.winner==="rouge"?n.r:n.b)+" gagnent !";
-    Music.stop();$("tv-banner-s").textContent="Bravo à tous les calculateurs";$("tv-banner").hidden=false;$("tv-after").hidden=false;setTimeout(fanfare,300);
+    Music.stop();$("tv-banner-s").textContent="Bravo à tous les calculateurs";$("tv-banner").hidden=false;$("tv-after").hidden=false;setTimeout(fanfare,300);setTimeout(()=>{if(S.status==="fini")Music.play();},2500);
   }
   const setNames=()=>{const n=names();$("tv-name-r").textContent=n.r;$("tv-name-b").textContent=n.b;push();};
   $("tv-in-r").oninput=$("tv-in-b").oninput=setNames;setNames();
   let cd=null;
   function launch(){
-    Music.stop();Music.intensity(0);beep(660);S.target=Number($("tv-target").value)||10;S.round=Date.now();S.status="decompte";S.winner=null;S.pos=0;S.startAt=Date.now()+3000;best.clear();
+    Music.intensity(0);beep(660);S.target=Number($("tv-target").value)||10;S.round=Date.now();S.status="decompte";S.winner=null;S.pos=0;S.startAt=Date.now()+3000;best.clear();
     tvArena.reset();tvArena.set(0,S.target);
     $("tv-lobby").hidden=true;$("tv-after").hidden=true;$("tv-banner").hidden=false;$("tv-banner-s").textContent="Préparez vos doigts !";push();
     let n=3;$("tv-banner-t").textContent=n;clearInterval(cd);
@@ -551,14 +564,20 @@ async function startTV(){
   }
   $("tv-start").onclick=launch;
   $("tv-again").onclick=launch;
-  $("tv-stop").onclick=()=>{Music.stop();clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
+  $("tv-stop").onclick=()=>{Music.intensity(0);clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
   const iv=setInterval(()=>{if(alive)recompute();},2500);
   leaveCurrent=()=>{alive=false;Music.stop();clearInterval(iv);clearInterval(cd);
     if(client){try{client.publish(base+"/state","",{retain:true});}catch(e){}setTimeout(()=>{try{client.end(true);}catch(e){}},300);}
     tvArena.reset();};
   $("tv-conn").textContent="Connexion…";
-  client=await connectBroker({will:{topic:base+"/state",payload:"",retain:true,qos:0}});
+  const got=await connectBroker({will:{topic:base+"/state",payload:"",retain:true,qos:0}},(n,t)=>{$("tv-conn").textContent=`Connexion… (${n}/${t})`;});
+  client=got?.client||null;
   if(!alive){client?.end(true);return;}
+  if(got){
+    const url2=baseURL()+"#"+code+got.index;
+    $("tv-url").textContent=url2.replace(/^https?:\/\//,"");
+    qr.innerHTML="";try{new QRCode(qr,{text:url2,width:148,height:148,colorDark:"#12343a",colorLight:"#ffffff"});}catch(e){qr.hidden=true;}
+  }
   if(!client){$("tv-conn").textContent="Pas de connexion";$("tv-help").textContent="Impossible de joindre le relais du jeu. Vérifiez la connexion internet puis rechargez la page.";return;}
   $("tv-conn").textContent="● Télé prête";
   client.on("offline",()=>{if(alive)$("tv-conn").textContent="Reconnexion…";});
@@ -580,9 +599,9 @@ $("j-go").onclick=()=>{
   if(!name){$("j-err").textContent="Écris ton prénom.";return;}
   $("j-err").textContent="";
   try{localStorage.setItem("corde-joueur",JSON.stringify({name,team:jTeam,level:jLevel}));}catch(e){}
-  beep(660);startPlayer(code,name,jTeam,jLevel);
+  beep(660);startPlayer(code,name,jTeam,jLevel,hashRelay);
 };
-async function startPlayer(code,name,team,level){
+async function startPlayer(code,name,team,level,relay){
   show("play");keepAwake();
   $("p-root").className="player "+team;
   $("p-who").textContent=name;
@@ -601,9 +620,15 @@ async function startPlayer(code,name,team,level){
   leaveCurrent=()=>{alive=false;clearInterval(hb);clearInterval(watch);clearInterval(cdTimer);document.removeEventListener("keydown",keys);
     if(client){send({type:"bye"});setTimeout(()=>{try{client.end(true);}catch(e){}},300);}};
   $("p-quit").onclick=()=>show("join");
-  client=await connectBroker({will:{topic:myTopic,payload:JSON.stringify({type:"bye"}),qos:0}});
+  let got=null;
+  const st=(n,t)=>showWait(`Connexion au jeu… (essai ${n}/${t})`);
+  const will={will:{topic:myTopic,payload:JSON.stringify({type:"bye"}),qos:0}};
+  if(relay!=null&&BROKERS[relay])got=await connectBroker(will,st,relay);
+  if(!got&&alive)got=await connectBroker(will,st);
+  client=got?.client||null;
   if(!alive){client?.end(true);return;}
-  if(!client){showWait("Impossible de joindre le jeu. Vérifie internet puis recharge la page.");return;}
+  if(!client){showWait("Impossible de joindre le jeu depuis ce téléphone. Essaie avec le Wi-Fi de la maison, puis recharge la page.");return;}
+  showWait("Recherche de la télé…");
   const t0=Date.now();
   client.on("message",(topic,buf)=>{
     const s=parse(buf);
@@ -644,7 +669,8 @@ async function startPlayer(code,name,team,level){
 
 /* Lien direct depuis le QR code : …/#ABCD */
 const hashCode=(location.hash||"").replace("#","").toUpperCase();
-if(/^[A-Z]{4}$/.test(hashCode)){$("j-code").value=hashCode;show("join");}
+let hashRelay=null;
+if(/^[A-Z]{4}[0-9]?$/.test(hashCode)){$("j-code").value=hashCode.slice(0,4);if(hashCode.length===5)hashRelay=Number(hashCode[4]);show("join");}
 
 /* ---------- Tablette à deux ---------- */
 let dl={r:1,b:3};
