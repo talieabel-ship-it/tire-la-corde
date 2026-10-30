@@ -219,7 +219,7 @@ label{font-weight:800;font-size:.9rem;display:grid;gap:6px}
   <div class="duo"><div class="player rouge" id="d-pr"></div><div class="player bleu" id="d-pb"></div></div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (() => {
@@ -384,68 +384,77 @@ function show(v){
 }
 document.addEventListener("click",e=>{const b=e.target.closest("[data-go]");if(b)show(b.dataset.go);});
 
-/* ---------- Réseau : liaison directe télé ↔ téléphones (PeerJS) ---------- */
+/* ---------- Réseau : relais MQTT public (télé ↔ téléphones) ---------- */
 const CODE_CHARS="ABCDEFGHJKMNPQRSTUVWXYZ";
-const PREFIX="tirelacorde-v1-";
 const clean=s=>String(s??"").replace(/[^\p{L}\p{N} '\-]/gu,"").slice(0,18);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const baseURL=()=>location.href.split("#")[0];
-const hasPeer=()=>typeof window.Peer==="function";
+const BROKERS=["wss://broker.hivemq.com:8884/mqtt","wss://broker.emqx.io:8084/mqtt"];
+const topicBase=code=>"tirelacorde/v2/"+code.toLowerCase();
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+function connectBroker(opts,onStatus){
+  // Essaie chaque relais tour à tour ; rend un client connecté ou null.
+  return new Promise(resolve=>{
+    if(typeof window.mqtt?.connect!=="function"){resolve(null);return;}
+    let i=0;
+    const tryNext=()=>{
+      if(i>=BROKERS.length){resolve(null);return;}
+      const url=BROKERS[i++];let done=false;
+      const c=mqtt.connect(url,{connectTimeout:6000,reconnectPeriod:0,clean:true,clientId:"tlc_"+uid(),...opts});
+      const fail=()=>{if(done)return;done=true;try{c.end(true);}catch(e){}tryNext();};
+      const t=setTimeout(fail,7000);
+      c.once("connect",()=>{if(done)return;done=true;clearTimeout(t);c.options.reconnectPeriod=2000;resolve(c);});
+      c.once("error",()=>{clearTimeout(t);fail();});
+    };
+    tryNext();
+  });
+}
+const parse=buf=>{try{return JSON.parse(buf.toString());}catch(e){return null;}};
 
 /* ---------- Écran TV ---------- */
 let tvArena=null;
-function startTV(){
+async function startTV(){
   if(!tvArena)tvArena=makeArena($("tv-arena"));
   keepAwake();
   const S={round:0,status:"attente",target:10,winner:null,pos:0,startAt:0};
-  const best=new Map();   // id téléphone -> meilleur nombre de tirages de la manche
-  const conns=new Map();  // id téléphone -> {conn, info}
-  let peer=null,alive=true,code="",players=[];
+  const best=new Map();     // joueur -> meilleur nombre de tirages de la manche
+  const players=new Map();  // joueur -> {name,team,level,round,pulls,seen}
+  let client=null,alive=true,code="",base="";
   $("tv-banner").hidden=true;$("tv-lobby").hidden=false;$("tv-after").hidden=true;$("tv-start").disabled=true;
-  if(!hasPeer()){$("tv-help").textContent="La connexion n'a pas pu se charger. Vérifiez internet puis rechargez la page.";return;}
+  code=Array.from({length:4},()=>pick([...CODE_CHARS])).join("");base=topicBase(code);
+  $("tv-code").textContent=code;
+  const url=baseURL()+"#"+code;
+  $("tv-url").textContent=url.replace(/^https?:\/\//,"");
+  const qr=$("tv-qr");qr.innerHTML="";qr.hidden=false;
+  try{new QRCode(qr,{text:url,width:148,height:148,colorDark:"#12343a",colorLight:"#ffffff"});}catch(e){qr.hidden=true;}
   const names=()=>({r:clean($("tv-in-r").value)||"Rouges",b:clean($("tv-in-b").value)||"Bleus"});
-  function stateMsg(){const n=names();return {type:"state",round:S.round,status:S.status,target:S.target,pos:Math.round(S.pos*100)/100,winner:S.winner,msLeft:Math.max(0,S.startAt-Date.now()),nr:n.r,nb:n.b};}
-  function push(){const m=stateMsg();conns.forEach(c=>{try{if(c.conn.open)c.conn.send(m);}catch(e){}});}
-  function openPeer(){
-    code=Array.from({length:4},()=>pick([...CODE_CHARS])).join("");
-    $("tv-code").textContent=code;
-    const url=baseURL()+"#"+code;
-    $("tv-url").textContent=url.replace(/^https?:\/\//,"");
-    const qr=$("tv-qr");qr.innerHTML="";
-    try{new QRCode(qr,{text:url,width:148,height:148,colorDark:"#12343a",colorLight:"#ffffff"});}catch(e){qr.hidden=true;}
-    $("tv-conn").textContent="Connexion…";
-    peer=new Peer(PREFIX+code.toLowerCase(),{debug:0});
-    peer.on("open",()=>{if(alive)$("tv-conn").textContent="● Télé prête";});
-    peer.on("error",e=>{
-      if(!alive)return;
-      if(e.type==="unavailable-id"){try{peer.destroy();}catch(x){}openPeer();return;}
-      $("tv-conn").textContent="Problème de connexion ("+e.type+")";
-    });
-    peer.on("disconnected",()=>{if(alive){$("tv-conn").textContent="Reconnexion…";try{peer.reconnect();}catch(x){}}});
-    peer.on("connection",conn=>{
-      conn.on("open",()=>{if(!conns.has(conn.peer))conns.set(conn.peer,{conn,info:null});else conns.get(conn.peer).conn=conn;try{conn.send(stateMsg());}catch(x){}});
-      conn.on("data",d=>onMsg(conn,d));
-      conn.on("close",()=>{const c=conns.get(conn.peer);if(c&&c.conn===conn)conns.delete(conn.peer);recompute();});
-      conn.on("error",()=>{});
-    });
+  function push(){
+    if(!client||!client.connected)return;
+    const n=names();
+    client.publish(base+"/state",JSON.stringify({ts:Date.now(),round:S.round,status:S.status,target:S.target,pos:Math.round(S.pos*100)/100,winner:S.winner,msLeft:Math.max(0,S.startAt-Date.now()),nr:n.r,nb:n.b}),{retain:true,qos:0});
   }
-  function onMsg(conn,d){
-    if(!d||typeof d!=="object")return;
-    let c=conns.get(conn.peer);if(!c){c={conn,info:null};conns.set(conn.peer,c);}
-    c.conn=conn;
+  function onMsg(topic,buf){
+    const id=topic.split("/").pop();const d=parse(buf);
+    if(!d||typeof d!=="object"||!/^[a-z0-9]{4,20}$/.test(id))return;
+    if(d.type==="bye"){players.delete(id);recompute();return;}
+    let p=players.get(id);
     if(d.type==="hello"){
       const lv=Number(d.level);
-      c.info={name:clean(d.name).slice(0,12)||"?",team:d.team==="bleu"?"bleu":"rouge",level:[1,2,3].includes(lv)?lv:1,round:c.info?.round||0,pulls:c.info?.pulls||0};
-    }else if(d.type==="pulls"&&c.info){
-      c.info.round=Number(d.round)||0;c.info.pulls=Math.max(0,Math.min(999,Number(d.pulls)||0));
+      p={name:clean(d.name).slice(0,12)||"?",team:d.team==="bleu"?"bleu":"rouge",level:[1,2,3].includes(lv)?lv:1,round:p?.round||0,pulls:p?.pulls||0,seen:Date.now()};
+      players.set(id,p);
     }
+    if(!p)return;
+    p.seen=Date.now();
+    if(typeof d.round==="number"){p.round=d.round;p.pulls=Math.max(0,Math.min(999,Number(d.pulls)||0));}
     recompute();
   }
   function recompute(){
     if(!alive)return;
-    players=[...conns.entries()].filter(([,c])=>c.info).map(([id,c])=>({id,...c.info}));
+    const now=Date.now();
+    for(const [id,p] of players)if(now-p.seen>12000)players.delete(id);
+    const list=[...players.entries()].map(([id,p])=>({id,...p}));
     if(S.status==="jeu"){
-      for(const p of players){
+      for(const p of list){
         if(p.round!==S.round)continue;
         const prev=best.get(p.id);
         best.set(p.id,{team:p.team,pulls:Math.max(prev?.pulls||0,p.pulls)});
@@ -457,11 +466,11 @@ function startTV(){
       if(Math.abs(S.pos)>=S.target){S.status="fini";S.winner=S.pos>0?"bleu":"rouge";endBanner();}
       tvArena.set(S.pos,S.target);
     }
-    const nm=team=>players.filter(p=>p.team===team).map(p=>p.name);
+    const nm=team=>list.filter(p=>p.team===team).map(p=>p.name);
     tvArena.teams(nm("rouge"),nm("bleu"));
-    const li=team=>{const ps=players.filter(p=>p.team===team);return ps.length?ps.map(p=>`<li>${esc(p.name)} <small>niv. ${p.level}</small></li>`).join(""):`<li class="muted">En attente des joueurs…</li>`;};
+    const li=team=>{const ps=list.filter(p=>p.team===team);return ps.length?ps.map(p=>`<li>${esc(p.name)} <small>niv. ${p.level}</small></li>`).join(""):`<li class="muted">En attente des joueurs…</li>`;};
     $("tv-list-r").innerHTML=li("rouge");$("tv-list-b").innerHTML=li("bleu");
-    const ok=players.some(p=>p.team==="rouge")&&players.some(p=>p.team==="bleu");
+    const ok=client&&list.some(p=>p.team==="rouge")&&list.some(p=>p.team==="bleu");
     $("tv-start").disabled=!ok;
     $("tv-start").textContent=ok?"Lancer la partie":"Il faut un joueur dans chaque équipe";
     push();
@@ -483,9 +492,20 @@ function startTV(){
   $("tv-start").onclick=launch;
   $("tv-again").onclick=launch;
   $("tv-stop").onclick=()=>{clearInterval(cd);S.status="attente";S.round=0;S.winner=null;S.pos=0;tvArena.reset();$("tv-banner").hidden=true;$("tv-after").hidden=true;$("tv-lobby").hidden=false;recompute();};
-  const iv=setInterval(()=>{if(alive)push();},2500);
-  leaveCurrent=()=>{alive=false;clearInterval(iv);clearInterval(cd);try{peer&&peer.destroy();}catch(e){}tvArena.reset();};
-  openPeer();recompute();
+  const iv=setInterval(()=>{if(alive)recompute();},2500);
+  leaveCurrent=()=>{alive=false;clearInterval(iv);clearInterval(cd);
+    if(client){try{client.publish(base+"/state","",{retain:true});}catch(e){}setTimeout(()=>{try{client.end(true);}catch(e){}},300);}
+    tvArena.reset();};
+  $("tv-conn").textContent="Connexion…";
+  client=await connectBroker({will:{topic:base+"/state",payload:"",retain:true,qos:0}});
+  if(!alive){client?.end(true);return;}
+  if(!client){$("tv-conn").textContent="Pas de connexion";$("tv-help").textContent="Impossible de joindre le relais du jeu. Vérifiez la connexion internet puis rechargez la page.";return;}
+  $("tv-conn").textContent="● Télé prête";
+  client.on("offline",()=>{if(alive)$("tv-conn").textContent="Reconnexion…";});
+  client.on("connect",()=>{if(alive){$("tv-conn").textContent="● Télé prête";client.subscribe(base+"/p/+");push();}});
+  client.on("message",onMsg);
+  client.subscribe(base+"/p/+");
+  recompute();
 }
 
 /* ---------- Joueur ---------- */
@@ -502,66 +522,64 @@ $("j-go").onclick=()=>{
   try{localStorage.setItem("corde-joueur",JSON.stringify({name,team:jTeam,level:jLevel}));}catch(e){}
   beep(660);startPlayer(code,name,jTeam,jLevel);
 };
-function startPlayer(code,name,team,level){
+async function startPlayer(code,name,team,level){
   show("play");keepAwake();
   $("p-root").className="player "+team;
   $("p-who").textContent=name;
   const wait=$("p-wait"),game=$("p-game");
-  const showWait=t=>{wait.hidden=false;game.hidden=true;wait.textContent=t;quiz.enable(false);};
-  let pulls=0,myRound=0,peer=null,conn=null,alive=true,retry=null,cdTimer=null;
-  const setPulls=()=>{$("p-pulls").textContent=pulls+(pulls>1?" tirages":" tirage");};setPulls();
-  const send=m=>{try{if(conn&&conn.open)conn.send(m);}catch(e){}};
+  const base=topicBase(code),me=uid().replace(/[^a-z0-9]/g,"").slice(0,16),myTopic=base+"/p/"+me;
+  let pulls=0,myRound=0,client=null,alive=true,cdTimer=null,lastState=0,lastStatus="";
   const quiz=makeQuiz(game,{level,onCorrect:()=>{pulls++;setPulls();send({type:"pulls",round:myRound,pulls});}});
+  const showWait=t=>{wait.hidden=false;game.hidden=true;wait.textContent=t;quiz.enable(false);};
+  const setPulls=()=>{$("p-pulls").textContent=pulls+(pulls>1?" tirages":" tirage");};setPulls();
+  const send=m=>{try{if(client&&client.connected)client.publish(myTopic,JSON.stringify(m));}catch(e){}};
+  const hello=()=>send({type:"hello",name,team,level,round:myRound,pulls});
   showWait("Connexion à la télé…");
-  const later=(fn,ms)=>{clearTimeout(retry);retry=setTimeout(()=>{if(alive)fn();},ms);};
-  function connect(){
-    if(!hasPeer()){showWait("La connexion n'a pas pu se charger. Vérifie internet puis recharge la page.");return;}
-    if(!peer||peer.destroyed){
-      peer=new Peer({debug:0});
-      peer.on("open",dial);
-      peer.on("error",e=>{
-        if(!alive)return;
-        if(e.type==="peer-unavailable")showWait(`Aucune télé trouvée avec le code ${code}. Vérifie les lettres sur la télé.`);
-        else showWait("Problème de connexion. Nouvel essai…");
-        later(connect,4000);
-      });
-      peer.on("disconnected",()=>{if(alive)try{peer.reconnect();}catch(x){}});
-    }else if(peer.open)dial();
-  }
-  function dial(){
+  const keys=e=>{if(/^[0-9]$/.test(e.key))quiz.press(e.key);else if(e.key==="Backspace")quiz.press("del");else if(e.key==="Enter")quiz.press("ok");};
+  document.addEventListener("keydown",keys);
+  let hb=null,watch=null;
+  leaveCurrent=()=>{alive=false;clearInterval(hb);clearInterval(watch);clearInterval(cdTimer);document.removeEventListener("keydown",keys);
+    if(client){send({type:"bye"});setTimeout(()=>{try{client.end(true);}catch(e){}},300);}};
+  $("p-quit").onclick=()=>show("join");
+  client=await connectBroker({will:{topic:myTopic,payload:JSON.stringify({type:"bye"}),qos:0}});
+  if(!alive){client?.end(true);return;}
+  if(!client){showWait("Impossible de joindre le jeu. Vérifie internet puis recharge la page.");return;}
+  const t0=Date.now();
+  client.on("message",(topic,buf)=>{
+    const s=parse(buf);
+    if(!s){if(lastState)showWait("La télé a fermé la partie.");lastState=0;return;}
+    if(Math.abs(Date.now()-(Number(s.ts)||0))>60000&&!lastState)return; // vieille partie oubliée
+    lastState=Date.now();onState(s);
+  });
+  client.on("connect",()=>{client.subscribe(base+"/state");hello();});
+  client.on("offline",()=>{if(alive)showWait("Connexion perdue. Nouvel essai…");});
+  client.subscribe(base+"/state");hello();
+  hb=setInterval(hello,3000);
+  watch=setInterval(()=>{
     if(!alive)return;
-    const c=peer.connect(PREFIX+code.toLowerCase(),{reliable:true});
-    conn=c;
-    c.on("open",()=>{clearTimeout(retry);send({type:"hello",name,team,level});if(myRound)send({type:"pulls",round:myRound,pulls});});
-    c.on("data",onState);
-    c.on("close",()=>{if(alive&&conn===c){showWait("La télé s'est déconnectée. Nouvel essai…");later(connect,2500);}});
-    c.on("error",()=>{});
-  }
+    if(!lastState&&Date.now()-t0>7000)showWait(`Aucune télé trouvée avec le code ${code}. Vérifie les lettres sur la télé.`);
+    else if(lastState&&Date.now()-lastState>10000)showWait("La télé ne répond plus…");
+  },2000);
   function onState(s){
-    if(!s||s.type!=="state")return;
     const target=Number(s.target)||10,pos=Number(s.pos)||0;
     $("p-knot").style.left=(50+Math.max(-50,Math.min(50,pos/target*50)))+"%";
     if(s.round&&s.round!==myRound){myRound=s.round;pulls=0;setPulls();send({type:"pulls",round:myRound,pulls:0});}
-    clearInterval(cdTimer);
+    const key=s.status+"|"+s.round;
+    if(s.status==="jeu"){if(game.hidden||wait.hidden===false){wait.hidden=true;game.hidden=false;quiz.enable(true);}lastStatus=key;return;}
+    if(key===lastStatus&&s.status!=="attente")return;
+    lastStatus=key;clearInterval(cdTimer);
     if(s.status==="attente")showWait(`Tu es dans l'équipe ${clean(team==="rouge"?s.nr:s.nb)}. Attends le départ !`);
     else if(s.status==="decompte"){
       const startAt=Date.now()+(Number(s.msLeft)||0);
       const tick=()=>{const left=Math.ceil((startAt-Date.now())/1000);showWait(left>0?`Prêt ? ${left}…`:"Partez !");};
       tick();cdTimer=setInterval(tick,250);
     }
-    else if(s.status==="jeu"){wait.hidden=true;game.hidden=false;quiz.enable(true);}
     else if(s.status==="fini"){
       const won=s.winner===team;
-      if(!wait.hidden&&wait.dataset.done===String(s.round))return;
       showWait(won?`Victoire ! Tu as tiré ${pulls} fois.`:`Perdu de peu… Tu as tiré ${pulls} fois. Revanche ?`);
-      wait.dataset.done=String(s.round);if(won)fanfare();
+      if(won)fanfare();
     }
   }
-  const keys=e=>{if(/^[0-9]$/.test(e.key))quiz.press(e.key);else if(e.key==="Backspace")quiz.press("del");else if(e.key==="Enter")quiz.press("ok");};
-  document.addEventListener("keydown",keys);
-  leaveCurrent=()=>{alive=false;clearTimeout(retry);clearInterval(cdTimer);document.removeEventListener("keydown",keys);try{peer&&peer.destroy();}catch(e){}};
-  $("p-quit").onclick=()=>show("join");
-  connect();
 }
 
 /* Lien direct depuis le QR code : …/#ABCD */
